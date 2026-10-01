@@ -1,4 +1,6 @@
 from src.scholarplan.blackboard.database import Blackboard
+from src.scholarplan.agents.planner import Planner
+from src.scholarplan.agents.retriever import Retriever
 
 
 def main():
@@ -6,24 +8,42 @@ def main():
 
     blackboard = Blackboard()
 
-    task_id = blackboard.add_task(
-        "Investigate the impact of large language models on academic research."
+    research_goal = (
+        "Investigate the impact of large language models "
+        "on academic research."
     )
 
-    blackboard.add_event(
-        "system",
-        "ScholarPlan blackboard initialized."
+    print(f"\nResearch goal:\n{research_goal}")
+
+    # Step 1: Create research plan
+    planner = Planner(blackboard)
+
+    plan = planner.create_plan(research_goal)
+
+    print("\nResearch plan created:")
+
+    for task in plan["tasks"]:
+        print(
+            f"Task {task['task_id']}: "
+            f"{task['description']}"
+        )
+
+    planner.save_plan(plan)
+
+    # Step 2: Retrieve sources for the research goal
+    retriever = Retriever(blackboard)
+
+    sources = retriever.search(
+        research_goal,
+        max_results=5
     )
 
-    print("Blackboard initialized successfully.")
-    print(f"Created task with ID: {task_id}")
+    print("\nSources retrieved:")
 
-    tasks = blackboard.get_tasks()
+    for source in sources:
+        print(f"- {source['title']}")
 
-    print("\nTasks currently stored on the blackboard:")
-
-    for task in tasks:
-        print(task)
+    print("\nScholarPlan pipeline completed successfully.")
 
     blackboard.close()
 
