@@ -1,0 +1,473 @@
+from src.scholarplan.agents.planner import Planner
+from src.scholarplan.agents.retriever import Retriever
+from src.scholarplan.agents.processor import Processor
+from src.scholarplan.agents.critic import Critic
+
+
+class ScholarPlanAgent:
+    """
+    Orchestrates the ScholarPlan agents using a bounded ReAct-style loop.
+
+    The system can:
+    1. Plan the research goal
+    2. Select a research task
+    3. Use the Planner's search query
+    4. Retrieve academic sources
+    5. Process sources into claims
+    6. Critically verify claims
+    7. Decide whether the evidence is sufficient
+    8. Re-plan when further evidence is required
+
+    Operational events are stored in the Blackboard as an execution trace.
+    The trace records actions, observations and decisions rather than
+    private model reasoning.
+    """
+
+    MAX_ITERATIONS = 3
+
+    def __init__(self, blackboard):
+
+        self.blackboard = blackboard
+
+        self.planner = Planner(
+            blackboard
+        )
+
+        self.retriever = Retriever(
+            blackboard
+        )
+
+        self.processor = Processor(
+            blackboard
+        )
+
+        self.critic = Critic(
+            blackboard
+        )
+
+    def log_event(self, event_type, message):
+        """
+        Store an operational event in the Blackboard execution trace.
+        """
+
+        self.blackboard.add_event(
+            event_type=event_type,
+            message=message
+        )
+
+    def run(self, research_goal):
+
+        print("\n=== ScholarPlan Autonomous Agent ===")
+
+        print(
+            f"Research goal: {research_goal}"
+        )
+
+        self.log_event(
+            "RUN_STARTED",
+            f"Research goal: {research_goal}"
+        )
+
+        # -----------------------------------------------------
+        # INITIAL PLANNING
+        # -----------------------------------------------------
+
+        plan = self.planner.create_plan(
+            research_goal
+        )
+
+        self.planner.save_plan(
+            plan
+        )
+
+        self.log_event(
+            "PLAN_CREATED",
+            f"Initial plan created with "
+            f"{len(plan['tasks'])} tasks."
+        )
+
+        print("\nInitial research plan:")
+
+        for task in plan["tasks"]:
+
+            print(
+                f"- {task['description']}"
+            )
+
+            print(
+                f"  Search query: {task['search_query']}"
+            )
+
+        # Store the latest iteration's results.
+
+        final_sources = []
+        final_claims = []
+        final_critic_results = []
+
+        # -----------------------------------------------------
+        # BOUNDED REACT LOOP
+        # -----------------------------------------------------
+
+        for iteration in range(
+            1,
+            self.MAX_ITERATIONS + 1
+        ):
+
+            print(
+                f"\n{'=' * 60}"
+            )
+
+            print(
+                f"REACT ITERATION {iteration}"
+            )
+
+            print(
+                f"{'=' * 60}"
+            )
+
+            self.log_event(
+                "ITERATION_STARTED",
+                f"Starting ReAct iteration {iteration}."
+            )
+
+            # -------------------------------------------------
+            # SELECT TASK
+            # -------------------------------------------------
+
+            tasks = plan["tasks"]
+
+            if not tasks:
+
+                self.log_event(
+                    "ERROR",
+                    "Planner returned an empty task list."
+                )
+
+                raise ValueError(
+                    "Planner returned an empty task list."
+                )
+
+            # Select one task from the current plan.
+            #
+            # If the previous iteration caused re-planning,
+            # this task comes from the new plan.
+
+            task_index = (
+                iteration - 1
+            ) % len(tasks)
+
+            selected_task = tasks[
+                task_index
+            ]
+
+            task_description = (
+                selected_task["description"]
+            )
+
+            search_query = (
+                selected_task["search_query"]
+            )
+
+            print(
+                "\n[Decision] Selected research task:"
+            )
+
+            print(
+                f"{task_description}"
+            )
+
+            print(
+                "\n[Decision] Search query:"
+            )
+
+            print(
+                f"{search_query}"
+            )
+
+            self.log_event(
+                "TASK_SELECTED",
+                f"Iteration {iteration}: "
+                f"{task_description}"
+            )
+
+            self.log_event(
+                "SEARCH_QUERY_SELECTED",
+                f"Iteration {iteration}: "
+                f"{search_query}"
+            )
+
+            # -------------------------------------------------
+            # ACTION 1: RETRIEVE
+            # -------------------------------------------------
+
+            print(
+                "\n[Action] Retrieving academic sources "
+                "for selected task..."
+            )
+
+            self.log_event(
+                "RETRIEVAL_STARTED",
+                f"Iteration {iteration}: "
+                f"Searching OpenAlex using the Planner query."
+            )
+
+            sources = self.retriever.search(
+                query=search_query,
+                max_results=5
+            )
+
+            print(
+                "[Observation] "
+                f"Retrieved {len(sources)} sources."
+            )
+
+            self.log_event(
+                "SOURCES_RETRIEVED",
+                f"Iteration {iteration}: "
+                f"Retrieved {len(sources)} sources."
+            )
+
+            # -------------------------------------------------
+            # ACTION 2: PROCESS
+            # -------------------------------------------------
+
+            print(
+                "\n[Action] Processing sources "
+                "into research claims..."
+            )
+
+            self.log_event(
+                "PROCESSING_STARTED",
+                f"Iteration {iteration}: "
+                f"Processing retrieved sources."
+            )
+
+            processed = (
+                self.processor.process_sources(
+                    sources=sources,
+                    research_goal=research_goal
+                )
+            )
+
+            claims = processed["claims"]
+
+            print(
+                "[Observation] "
+                f"Generated {len(claims)} claims."
+            )
+
+            self.log_event(
+                "CLAIMS_GENERATED",
+                f"Iteration {iteration}: "
+                f"Generated {len(claims)} claims."
+            )
+
+            # -------------------------------------------------
+            # ACTION 3: CRITIC
+            # -------------------------------------------------
+
+            print(
+                "\n[Action] Verifying claims with Critic..."
+            )
+
+            self.log_event(
+                "CRITIC_STARTED",
+                f"Iteration {iteration}: "
+                f"Verifying {len(claims)} claims."
+            )
+
+            critic_results = (
+                self.critic.evaluate_claims(
+                    claims=claims,
+                    sources=sources,
+                    research_goal=research_goal
+                )
+            )
+
+            supported = 0
+            insufficient = 0
+            rejected = 0
+
+            for result in critic_results:
+
+                print(
+                    f"\nClaim: {result['claim']}"
+                )
+
+                print(
+                    f"Verdict: {result['verdict']}"
+                )
+
+                print(
+                    f"Relevance: {result['relevance']}"
+                )
+
+                if result["verdict"] == "SUPPORTED":
+
+                    supported += 1
+
+                elif (
+                    result["verdict"]
+                    == "INSUFFICIENT_EVIDENCE"
+                ):
+
+                    insufficient += 1
+
+                else:
+
+                    rejected += 1
+
+            print("\n[Observation]")
+
+            print(
+                f"Supported claims: {supported}"
+            )
+
+            print(
+                f"Insufficient evidence: {insufficient}"
+            )
+
+            print(
+                f"Rejected/irrelevant: {rejected}"
+            )
+
+            self.log_event(
+                "CRITIC_COMPLETED",
+                f"Iteration {iteration}: "
+                f"{supported} supported, "
+                f"{insufficient} insufficient, "
+                f"{rejected} rejected or irrelevant."
+            )
+
+            # Store the latest results.
+
+            final_sources = sources
+            final_claims = claims
+            final_critic_results = critic_results
+
+            # -------------------------------------------------
+            # DECISION: IS EVIDENCE SUFFICIENT?
+            # -------------------------------------------------
+
+            total_claims = len(
+                critic_results
+            )
+
+            if (
+                total_claims > 0
+                and supported / total_claims >= 0.6
+            ):
+
+                print(
+                    "\n[Decision] Evidence is sufficient. "
+                    "Ending autonomous loop."
+                )
+
+                self.log_event(
+                    "EVIDENCE_SUFFICIENT",
+                    f"Iteration {iteration}: "
+                    f"Evidence threshold satisfied."
+                )
+
+                self.log_event(
+                    "RUN_COMPLETED",
+                    f"ScholarPlan completed after "
+                    f"{iteration} iteration(s)."
+                )
+
+                return {
+                    "research_goal": research_goal,
+                    "iterations": iteration,
+                    "sources": final_sources,
+                    "claims": final_claims,
+                    "critic_results": final_critic_results,
+                    "status": "completed"
+                }
+
+            # -------------------------------------------------
+            # RE-PLANNING
+            # -------------------------------------------------
+
+            if iteration < self.MAX_ITERATIONS:
+
+                print(
+                    "\n[Decision] Evidence is insufficient."
+                )
+
+                print(
+                    "[Action] Re-planning research strategy..."
+                )
+
+                self.log_event(
+                    "EVIDENCE_INSUFFICIENT",
+                    f"Iteration {iteration}: "
+                    f"Evidence threshold was not satisfied."
+                )
+
+                self.log_event(
+                    "REPLANNING_STARTED",
+                    f"Iteration {iteration}: "
+                    f"Generating a new research plan."
+                )
+
+                plan = self.planner.create_plan(
+                    research_goal
+                )
+
+                self.planner.save_plan(
+                    plan
+                )
+
+                self.log_event(
+                    "PLAN_CREATED",
+                    f"New plan created after iteration "
+                    f"{iteration} with "
+                    f"{len(plan['tasks'])} tasks."
+                )
+
+                print(
+                    "\nNew research plan:"
+                )
+
+                for task in plan["tasks"]:
+
+                    print(
+                        f"- {task['description']}"
+                    )
+
+                    print(
+                        f"  Search query: "
+                        f"{task['search_query']}"
+                    )
+
+            else:
+
+                print(
+                    "\n[Decision] Maximum iteration "
+                    "limit reached."
+                )
+
+                self.log_event(
+                    "MAX_ITERATIONS_REACHED",
+                    f"Maximum of "
+                    f"{self.MAX_ITERATIONS} iterations reached."
+                )
+
+        # -----------------------------------------------------
+        # MAXIMUM ITERATIONS REACHED
+        # -----------------------------------------------------
+
+        self.log_event(
+            "RUN_COMPLETED",
+            "ScholarPlan stopped because the maximum "
+            "iteration limit was reached."
+        )
+
+        return {
+            "research_goal": research_goal,
+            "iterations": self.MAX_ITERATIONS,
+            "sources": final_sources,
+            "claims": final_claims,
+            "critic_results": final_critic_results,
+            "status": "maximum_iterations_reached"
+        }

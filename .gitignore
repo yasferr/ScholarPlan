@@ -1,0 +1,18 @@
+# Environment variables and secrets
+.env
+
+# Python virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# PyCharm
+.idea/
+
+# Generated outputs
+outputs/
+
+# OS files
+.DS_Store

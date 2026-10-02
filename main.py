@@ -1,9 +1,9 @@
 from src.scholarplan.blackboard.database import Blackboard
-from src.scholarplan.agents.planner import Planner
-from src.scholarplan.agents.retriever import Retriever
+from src.scholarplan.agent_loop import ScholarPlanAgent
 
 
 def main():
+
     print("Starting ScholarPlan...")
 
     blackboard = Blackboard()
@@ -13,37 +13,21 @@ def main():
         "on academic research."
     )
 
-    print(f"\nResearch goal:\n{research_goal}")
+    agent = ScholarPlanAgent(blackboard)
 
-    # Step 1: Create research plan
-    planner = Planner(blackboard)
+    result = agent.run(research_goal)
 
-    plan = planner.create_plan(research_goal)
+    print("\n")
+    print("=" * 60)
+    print("SCHOLARPLAN FINAL STATUS")
+    print("=" * 60)
 
-    print("\nResearch plan created:")
+    print(f"Status: {result['status']}")
+    print(f"Iterations executed: {result['iterations']}")
+    print(f"Sources retrieved: {len(result['sources'])}")
+    print(f"Claims generated: {len(result['claims'])}")
 
-    for task in plan["tasks"]:
-        print(
-            f"Task {task['task_id']}: "
-            f"{task['description']}"
-        )
-
-    planner.save_plan(plan)
-
-    # Step 2: Retrieve sources for the research goal
-    retriever = Retriever(blackboard)
-
-    sources = retriever.search(
-        research_goal,
-        max_results=5
-    )
-
-    print("\nSources retrieved:")
-
-    for source in sources:
-        print(f"- {source['title']}")
-
-    print("\nScholarPlan pipeline completed successfully.")
+    print("\nScholarPlan pipeline completed.")
 
     blackboard.close()
 
