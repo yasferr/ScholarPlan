@@ -2,6 +2,7 @@ from src.scholarplan.agents.planner import Planner
 from src.scholarplan.agents.retriever import Retriever
 from src.scholarplan.agents.processor import Processor
 from src.scholarplan.agents.critic import Critic
+from src.scholarplan.agents.archivist import Archivist
 
 
 class ScholarPlanAgent:
@@ -17,6 +18,7 @@ class ScholarPlanAgent:
     6. Critically verify claims
     7. Decide whether the accumulated evidence is sufficient
     8. Re-plan when further evidence is required
+    9. Archive the final research outputs
 
     Operational events are stored in the Blackboard as an execution trace.
     The trace records actions, observations and decisions rather than
@@ -27,10 +29,12 @@ class ScholarPlanAgent:
 
     def __init__(self, blackboard):
         self.blackboard = blackboard
+
         self.planner = Planner(blackboard)
         self.retriever = Retriever(blackboard)
         self.processor = Processor(blackboard)
         self.critic = Critic(blackboard)
+        self.archivist = Archivist(blackboard)
 
     def log_event(self, event_type, message):
         """
@@ -40,6 +44,56 @@ class ScholarPlanAgent:
             event_type=event_type,
             message=message
         )
+
+    def archive_results(
+        self,
+        research_goal,
+        status,
+        iterations
+    ):
+        """
+        Generate the persistent research outputs after the
+        autonomous research process has completed.
+        """
+
+        print(
+            "\n[Action] Archivist is generating "
+            "the final research package..."
+        )
+
+        self.log_event(
+            "ARCHIVIST_STARTED",
+            "Generating final research report, "
+            "BibTeX bibliography and execution trace."
+        )
+
+        archive_result = self.archivist.archive(
+            research_goal=research_goal,
+            status=status,
+            iterations=iterations
+        )
+
+        print(
+            "\n[Observation] "
+            "Final research package generated."
+        )
+
+        print(
+            f"Research report: "
+            f"{archive_result['research_report']}"
+        )
+
+        print(
+            f"References: "
+            f"{archive_result['references']}"
+        )
+
+        print(
+            f"Execution trace: "
+            f"{archive_result['execution_trace']}"
+        )
+
+        return archive_result
 
     def run(self, research_goal):
         print("\n=== ScholarPlan Autonomous Agent ===")
@@ -259,7 +313,9 @@ class ScholarPlanAgent:
             # ACCUMULATED DECISION METRICS
             # -----------------------------------------------------
 
-            total_accumulated_claims = len(all_critic_results)
+            total_accumulated_claims = len(
+                all_critic_results
+            )
 
             accumulated_supported = sum(
                 1
@@ -326,12 +382,19 @@ class ScholarPlanAgent:
                     f"{iteration} iteration(s)."
                 )
 
+                archive_result = self.archive_results(
+                    research_goal=research_goal,
+                    status="completed",
+                    iterations=iteration
+                )
+
                 return {
                     "research_goal": research_goal,
                     "iterations": iteration,
                     "sources": all_sources,
                     "claims": all_claims,
                     "critic_results": all_critic_results,
+                    "archive": archive_result,
                     "status": "completed"
                 }
 
@@ -412,11 +475,18 @@ class ScholarPlanAgent:
             "iteration limit was reached."
         )
 
+        archive_result = self.archive_results(
+            research_goal=research_goal,
+            status="maximum_iterations_reached",
+            iterations=self.MAX_ITERATIONS
+        )
+
         return {
             "research_goal": research_goal,
             "iterations": self.MAX_ITERATIONS,
             "sources": all_sources,
             "claims": all_claims,
             "critic_results": all_critic_results,
+            "archive": archive_result,
             "status": "maximum_iterations_reached"
         }

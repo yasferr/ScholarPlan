@@ -13,7 +13,6 @@ class Critic:
     """
 
     def __init__(self, blackboard):
-
         self.blackboard = blackboard
 
     def evaluate_claim(
@@ -216,6 +215,19 @@ Rules:
                 f"Invalid relevance value: "
                 f"{result['relevance']}"
             )
+
+        # -------------------------------------------------
+        # UPDATE THE CLAIM STATUS IN THE BLACKBOARD
+        # -------------------------------------------------
+
+        self.blackboard.update_claim_status(
+            claim_id=claim["id"],
+            status=result["verdict"]
+        )
+
+        # -------------------------------------------------
+        # STORE VERIFICATION FEEDBACK
+        # -------------------------------------------------
 
         feedback_message = (
             f"Verdict: {result['verdict']}\n"
