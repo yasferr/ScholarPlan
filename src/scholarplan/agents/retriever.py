@@ -1,5 +1,7 @@
 import requests
 
+from src.scholarplan.embeddings import EmbeddingStore
+
 
 class Retriever:
     """Retrieve academic sources from OpenAlex."""
@@ -9,14 +11,16 @@ class Retriever:
     def __init__(self, blackboard):
         self.blackboard = blackboard
 
+        # The real Blackboard provides a database path.
+        # Lightweight fake blackboards used in unit tests may not.
+        if hasattr(blackboard, "database_path"):
+            self.embedding_store = EmbeddingStore(
+                database_path=blackboard.database_path
+            )
+        else:
+            self.embedding_store = None
+
     def search(self, query, max_results=5):
-        """
-        Search OpenAlex using a specific research query.
-
-        The query can come from either the overall research goal
-        or an individual task produced by the Planner.
-        """
-
         print(f"Retriever searching OpenAlex for: {query}")
 
         response = requests.get(
@@ -38,7 +42,6 @@ class Retriever:
         stored_sources = []
 
         for result in results:
-
             title = result.get(
                 "display_name",
                 "Unknown title"
@@ -46,7 +49,8 @@ class Retriever:
 
             authors = ", ".join(
                 authorship.get(
-                    "author", {}
+                    "author",
+                    {}
                 ).get(
                     "display_name",
                     ""
@@ -78,8 +82,6 @@ class Retriever:
                 or result.get("id", "")
             )
 
-            # OpenAlex stores abstracts as an inverted index.
-            # Reconstruct the abstract into normal text.
             abstract = ""
 
             abstract_index = result.get(
@@ -87,13 +89,10 @@ class Retriever:
             )
 
             if abstract_index:
-
                 words = []
 
                 for word, positions in abstract_index.items():
-
                     for position in positions:
-
                         words.append(
                             (position, word)
                         )
@@ -112,6 +111,39 @@ class Retriever:
                 identifier=identifier
             )
 
+            embedding_result = None
+            duplicate_matches = []
+
+            if self.embedding_store is not None:
+
+                # Create the embedding before storing it.
+                vector = self.embedding_store.create_embedding(
+                    f"{title}\n\n{abstract}"
+                )
+
+                # Compare this source against embeddings that
+                # were already stored during the current run.
+                duplicate_matches = (
+                    self.embedding_store.find_similar(
+                        vector=vector,
+                        threshold=0.85
+                    )
+                )
+
+                # Store the new embedding after comparison so
+                # that a source does not match itself.
+                embedding_id = (
+                    self.embedding_store.store_embedding(
+                        source_id=source_id,
+                        vector=vector
+                    )
+                )
+
+                embedding_result = {
+                    "id": embedding_id,
+                    "dimension": len(vector)
+                }
+
             stored_sources.append(
                 {
                     "id": source_id,
@@ -119,8 +151,25 @@ class Retriever:
                     "authors": authors,
                     "source_url": source_url,
                     "identifier": identifier,
-                    "abstract": abstract
+                    "abstract": abstract,
+                    "embedding_id": (
+                        embedding_result["id"]
+                        if embedding_result
+                        else None
+                    ),
+                    "embedding_dimension": (
+                        embedding_result["dimension"]
+                        if embedding_result
+                        else None
+                    ),
+                    "duplicate_matches": duplicate_matches
                 }
             )
 
         return stored_sources
+
+    def close(self):
+        """Close the embedding store."""
+
+        if self.embedding_store is not None:
+            self.embedding_store.close()
